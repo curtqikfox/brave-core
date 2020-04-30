@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "base/gtest_prod_util.h"
+#include "base/time/time.h"
 #include "bat/ledger/ledger.h"
 
 namespace bat_ledger {
@@ -20,7 +21,8 @@ class LedgerImpl;
 
 namespace braveledger_publisher {
 
-class PublisherServerList;
+class PublisherPrefixListUpdater;
+class ServerPublisherFetcher;
 
 class Publisher {
  public:
@@ -28,8 +30,14 @@ class Publisher {
 
   ~Publisher();
 
-  // Called when timer is triggered
-  void OnTimer(uint32_t timer_id);
+  bool ShouldFetchServerPublisherInfo(const base::Time& last_updated_time);
+
+  bool ShouldFetchServerPublisherInfo(
+      ledger::ServerPublisherInfo* server_info);
+
+  void FetchServerPublisherInfo(
+      const std::string& publisher_key,
+      ledger::GetServerPublisherInfoCallback callback);
 
   void RefreshPublisher(
       const std::string& publisher_key,
@@ -49,10 +57,6 @@ class Publisher {
       ledger::ResultCallback callback);
 
   void OnPublisherInfoSaved(const ledger::Result result);
-
-  void ParsePublisherList(
-      const std::string& data,
-      ledger::ResultCallback callback);
 
   void getPublisherActivityFromUrl(
       uint64_t windowId,
@@ -85,28 +89,15 @@ class Publisher {
   void CalcScoreConsts(const int min_duration_seconds);
 
  private:
-  void OnRefreshPublisher(
-    const ledger::Result result,
-    const std::string& publisher_key,
-    ledger::OnRefreshPublisherCallback callback);
-
-  void OnRefreshPublisherServerPublisher(
-    ledger::ServerPublisherInfoPtr info,
-    ledger::OnRefreshPublisherCallback callback);
-
   void onPublisherActivitySave(uint64_t windowId,
                                const ledger::VisitData& visit_data,
                                ledger::Result result,
                                ledger::PublisherInfoPtr info);
 
-  bool IsExcluded(
-      const std::string& publisher_id,
-      const bool server_exclude,
-      const ledger::PublisherExclude& excluded);
+  void OnPublisherPrefixListUpdated();
 
   void SaveVisitInternal(
       const ledger::PublisherStatus,
-      bool server_excluded,
       const std::string& publisher_key,
       const ledger::VisitData& visit_data,
       uint64_t duration,
@@ -171,7 +162,8 @@ class Publisher {
   ledger::PublisherStatus ParsePublisherStatus(const std::string& status);
 
   bat_ledger::LedgerImpl* ledger_;  // NOT OWNED
-  std::unique_ptr<PublisherServerList> server_list_;
+  std::unique_ptr<PublisherPrefixListUpdater> prefix_list_updater_;
+  std::unique_ptr<ServerPublisherFetcher> server_publisher_fetcher_;
 
   // For testing purposes
   friend class PublisherTest;
