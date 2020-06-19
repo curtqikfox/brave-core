@@ -486,20 +486,8 @@ void BraveRewardsNativeWorker::GetReconcileStamp(JNIEnv* env,
 
 void BraveRewardsNativeWorker::ResetTheWholeState(JNIEnv* env,
     const base::android::JavaParamRef<jobject>& obj) {
-  auto* ads_service_ = brave_ads::AdsServiceFactory::GetForProfile(
-    ProfileManager::GetActiveUserProfile()->GetOriginalProfile());
-  if (ads_service_) {
-    ads_service_->ResetTheWholeState(base::Bind(
-           &BraveRewardsNativeWorker::OnAdsResetTheWholeState,
-           weak_factory_.GetWeakPtr()));
-  } else {
-    OnAdsResetTheWholeState(true);
-  }
-}
-
-void BraveRewardsNativeWorker::OnAdsResetTheWholeState(bool sucess) {
-  if (sucess && brave_rewards_service_) {
-    brave_rewards_service_->ResetTheWholeState(base::Bind(
+  if (brave_rewards_service_) {
+    brave_rewards_service_->CompleteReset(base::Bind(
            &BraveRewardsNativeWorker::OnResetTheWholeState,
            weak_factory_.GetWeakPtr()));
   } else {

@@ -368,20 +368,21 @@ RewardsServiceImpl::RewardsServiceImpl(Profile* profile)
       publisher_info_db_path_(profile->GetPath().Append(kPublisher_info_db)),
       publisher_list_path_(profile->GetPath().Append(kPublishers_list)),
       rewards_base_path_(profile_->GetPath().Append(kRewardsStatePath)),
-      rewards_database_(new RewardsDatabase(publisher_info_db_path_)),
       notification_service_(new RewardsNotificationServiceImpl(profile)),
-      next_timer_id_(0),
-      reset_states_(false) {
+      next_timer_id_(0) {
   file_task_runner_->PostTask(
       FROM_HERE, base::BindOnce(&EnsureRewardsBaseDirectoryExists,
                                 rewards_base_path_));
   // Set up the rewards data source
   content::URLDataSource::Add(profile_,
                               std::make_unique<BraveRewardsSource>(profile_));
+  ready_ = std::make_unique<base::OneShotEvent>();
 }
 
 RewardsServiceImpl::~RewardsServiceImpl() {
-  file_task_runner_->DeleteSoon(FROM_HERE, rewards_database_.release());
+  if (rewards_database_) {
+    file_task_runner_->DeleteSoon(FROM_HERE, rewards_database_.release());
+  }
   StopNotificationTimers();
 }
 
@@ -423,6 +424,9 @@ void RewardsServiceImpl::StartLedger() {
     BLOG(1, "Ledger process is already running");
     return;
   }
+
+  rewards_database_ =
+      std::make_unique<RewardsDatabase>(publisher_info_db_path_);
 
   BLOG(1, "Starting ledger process");
 
@@ -545,9 +549,9 @@ void RewardsServiceImpl::RemovePrivateObserver(
 }
 
 void RewardsServiceImpl::CreateWallet(CreateWalletCallback callback) {
-  if (!ready().is_signaled()) {
+  if (!ready_->is_signaled()) {
     StartLedger();
-    ready().Post(
+    ready_->Post(
         FROM_HERE,
         base::BindOnce(&brave_rewards::RewardsService::CreateWallet,
             AsWeakPtr(),
@@ -845,8 +849,9 @@ void RewardsServiceImpl::OnWalletInitialized(ledger::Result result) {
     is_wallet_initialized_ = true;
   }
 
-  if (!ready_.is_signaled())
-    ready_.Signal();
+  if (!ready_->is_signaled()) {
+    ready_->Signal();
+  }
 
   if (result == ledger::Result::WALLET_CREATED) {
     StartNotificationTimers(true);
@@ -1447,8 +1452,8 @@ void RewardsServiceImpl::SetRewardsMainEnabled(bool enabled) {
   if (enabled) {
     StartLedger();
 
-    if (!ready().is_signaled()) {
-      ready().Post(
+    if (!ready_->is_signaled()) {
+      ready_->Post(
           FROM_HERE,
           base::Bind(&brave_rewards::RewardsService::SetRewardsMainEnabled,
               base::Unretained(this),
@@ -1481,6 +1486,12 @@ void RewardsServiceImpl::EnableGreaseLion(const bool enabled) {
 
 void RewardsServiceImpl::StopLedger() {
   BLOG(1, "Shutting down ledger process");
+  if (!Connected()) {
+    BLOG(1, "Ledger process not running");
+    Reset();
+    return;
+  }
+
   bat_ledger_->Shutdown(
       base::BindOnce(&RewardsServiceImpl::OnStopLedger, AsWeakPtr()));
 }
@@ -1490,7 +1501,11 @@ void RewardsServiceImpl::OnStopLedger(const ledger::Result result) {
       1,
       result != ledger::Result::LEDGER_OK,
       "Ledger process was not shut down successfully");
+  Reset();
+  BLOG(1, "Successfully shutdown ledger");
+}
 
+void RewardsServiceImpl::Reset() {
   for (auto* const url_loader : url_loaders_) {
     delete url_loader;
   }
@@ -1504,11 +1519,17 @@ void RewardsServiceImpl::OnStopLedger(const ledger::Result result) {
     }
   }
 
+  current_media_fetchers_.clear();
+  timers_.clear();
   bat_ledger_.reset();
   bat_ledger_client_receiver_.reset();
   bat_ledger_service_.reset();
   is_wallet_initialized_ = false;
-  BLOG(1, "Successfully shutdown ledger");
+  ready_ = std::make_unique<base::OneShotEvent>();
+  bool success =
+      file_task_runner_->DeleteSoon(FROM_HERE, rewards_database_.release());
+  BLOG_IF(1, !success, "Database was not released");
+  BLOG(1, "Successfully reset rewards service");
 }
 
 void RewardsServiceImpl::GetRewardsMainEnabled(
@@ -1587,9 +1608,6 @@ void RewardsServiceImpl::OnGetTransactionHistory(
 void RewardsServiceImpl::SaveState(const std::string& name,
                                    const std::string& value,
                                    ledger::ResultCallback callback) {
-  if (reset_states_) {
-    return;
-  }
   base::ImportantFileWriter writer(
       rewards_base_path_.AppendASCII(name), file_task_runner_);
 
@@ -1624,31 +1642,6 @@ void RewardsServiceImpl::ResetState(
                      rewards_base_path_.AppendASCII(name)),
       base::BindOnce(&RewardsServiceImpl::OnResetState,
                      AsWeakPtr(), std::move(callback)));
-}
-
-void RewardsServiceImpl::ResetTheWholeState(
-    const base::Callback<void(bool)>& callback) {
-  reset_states_ = true;
-  ClearAllNotifications();
-  std::vector<base::FilePath> paths;
-  paths.push_back(ledger_state_path_);
-  paths.push_back(publisher_state_path_);
-  paths.push_back(publisher_info_db_path_);
-  paths.push_back(publisher_list_path_);
-  paths.push_back(rewards_base_path_);
-
-  base::PostTaskAndReplyWithResult(
-      file_task_runner_.get(), FROM_HERE,
-      base::BindOnce(&ResetOnFilesTaskRunner,
-                     paths),
-      base::BindOnce(&RewardsServiceImpl::OnResetTheWholeState,
-                     AsWeakPtr(), std::move(callback)));
-}
-
-void RewardsServiceImpl::OnResetTheWholeState(
-    base::Callback<void(bool)> callback,
-    bool success) {
-  callback.Run(success);
 }
 
 void RewardsServiceImpl::OnSavedState(
@@ -3115,7 +3108,6 @@ void RewardsServiceImpl::OnFetchBalance(FetchBalanceCallback callback,
                                                          balance->user_funds);
     RecordWalletBalanceP3A(true, true,
                            static_cast<size_t>(balance_minus_grant));
-    RecordBackendP3AStats();
   }
 
   std::move(callback).Run(static_cast<int>(result), std::move(new_balance));
@@ -3749,6 +3741,7 @@ ledger::DBCommandResponsePtr RunDBTransactionOnFileTaskRunner(
 void RewardsServiceImpl::RunDBTransaction(
     ledger::DBTransactionPtr transaction,
     ledger::RunDBTransactionCallback callback) {
+  DCHECK(rewards_database_);
   base::PostTaskAndReplyWithResult(
       file_task_runner_.get(),
       FROM_HERE,
@@ -3879,6 +3872,40 @@ void RewardsServiceImpl::OnGetAllPromotions(
 
 void RewardsServiceImpl::ClearAllNotifications() {
   notification_service_->DeleteAllNotifications();
+}
+
+void RewardsServiceImpl::CompleteReset() {
+  notification_service_->DeleteAllNotifications();
+  std::vector<base::FilePath> paths;
+  paths.push_back(ledger_state_path_);
+  paths.push_back(publisher_state_path_);
+  paths.push_back(publisher_info_db_path_);
+
+  base::PostTaskAndReplyWithResult(
+      file_task_runner_.get(),
+      FROM_HERE,
+      base::BindOnce(&ResetOnFilesTaskRunner, paths),
+      base::BindOnce(
+          &RewardsServiceImpl::OnCompleteReset,
+          AsWeakPtr()));
+}
+
+void RewardsServiceImpl::OnCompleteReset(
+    const bool success) {
+  // TODO enable with 84
+  // profile_->GetPrefs()->ClearPrefsWithPrefixSilently(pref_prefix);
+
+  auto* ads_service = brave_ads::AdsServiceFactory::GetForProfile(profile_);
+  if (ads_service) {
+    ads_service->ResetAllState();
+  }
+
+  for (auto& observer : observers_) {
+    observer.OnCompleteReset(success);
+  }
+
+  StopLedger();
+  StopNotificationTimers();
 }
 
 }  // namespace brave_rewards
