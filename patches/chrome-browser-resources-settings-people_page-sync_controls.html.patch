@@ -1,0 +1,13 @@
+diff --git a/chrome/browser/resources/settings/people_page/sync_controls.html b/chrome/browser/resources/settings/people_page/sync_controls.html
+index 6b347d4d56cf53d89e5e7c42a610a7b54b216d39..c96dabde5e83b23ae3272367ea1279b2c7e75146 100644
+--- a/chrome/browser/resources/settings/people_page/sync_controls.html
++++ b/chrome/browser/resources/settings/people_page/sync_controls.html
+@@ -165,7 +165,7 @@
+         </cr-toggle>
+       </div>
+ 
+-      <div class="list-item" hidden="[[!syncPrefs.autofillRegistered]]">
++      <div class="list-item" hidden="true">
+         <!-- The Payments integration checkbox is a special case in many
+              ways. It's visible only if autofill is registered. It's
+              disabled and unchecked if autofill is unchecked.-->
