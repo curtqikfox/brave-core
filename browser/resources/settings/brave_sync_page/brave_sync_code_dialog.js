@@ -101,7 +101,14 @@
         return
       }
       const data = await this.syncBrowserProxy_.getQRCode(this.syncCode)
-      this.$$('#qrCode').innerText = data
+      if (!data) {
+        console.error('getQRCode failed');
+        return;
+      }
+      let img = new Image();
+      img.src = data;
+      this.$$('#qrCode').appendChild(img);
+
       // TODO(petemill): generate a canvas / image
     },
 
