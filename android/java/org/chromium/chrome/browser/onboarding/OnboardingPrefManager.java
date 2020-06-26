@@ -31,6 +31,7 @@ public class OnboardingPrefManager {
     private static final String PREF_ONBOARDING = "onboarding";
     private static final String PREF_NEXT_ONBOARDING_DATE = "next_onboarding_date";
     private static final String PREF_ONBOARDING_SKIP_COUNT = "onboarding_skip_count";
+    private static final String PREF_BRAVE_STATS = "brave_stats";
     public static final String ONBOARDING_TYPE = "onboarding_type";
     public static final String FROM_SETTINGS = "from_settings";
 
@@ -85,6 +86,16 @@ public class OnboardingPrefManager {
     public void setPrefOnboardingEnabled(boolean enabled) {
         SharedPreferences.Editor sharedPreferencesEditor = mSharedPreferences.edit();
         sharedPreferencesEditor.putBoolean(PREF_ONBOARDING, enabled);
+        sharedPreferencesEditor.apply();
+    }
+
+    public boolean isBraveStatsEnabled() {
+        return mSharedPreferences.getBoolean(PREF_BRAVE_STATS, false);
+    }
+
+    public void setBraveStatsEnabled(boolean enabled) {
+        SharedPreferences.Editor sharedPreferencesEditor = mSharedPreferences.edit();
+        sharedPreferencesEditor.putBoolean(PREF_BRAVE_STATS, enabled);
         sharedPreferencesEditor.apply();
     }
 
