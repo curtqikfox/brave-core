@@ -1,5 +1,5 @@
 diff --git a/chrome/android/java/src/org/chromium/chrome/browser/sync/settings/ManageSyncSettings.java b/chrome/android/java/src/org/chromium/chrome/browser/sync/settings/ManageSyncSettings.java
-index bf9fefaa55ccc4b0b48717bb2961aa9904a37e4c..7cb927c534beec8aed8e209761004b479494a8b5 100644
+index 8ecf0937d3259dda3e097b249a143b440303b770..8a84c81a56a348a9b1db6f2f16e2b69712d6776e 100644
 --- a/chrome/android/java/src/org/chromium/chrome/browser/sync/settings/ManageSyncSettings.java
 +++ b/chrome/android/java/src/org/chromium/chrome/browser/sync/settings/ManageSyncSettings.java
 @@ -65,7 +65,7 @@ import java.util.Set;
