@@ -1878,7 +1878,7 @@ void AdsServiceImpl::SetIdleThreshold(const int threshold) {
 
 bool AdsServiceImpl::IsForeground() const {
   Profile* profile = ProfileManager::GetActiveUserProfile();
-  if (!profile_->IsSameProfile(profile)) {
+  if (!profile_->IsSameOrParent(profile)) {
     return false;
   }
 
